@@ -697,6 +697,74 @@ function sebufApiPlugin(): Plugin {
   };
 }
 
+function mcpDevPlugin(): Plugin {
+  return {
+    name: 'mcp-dev-plugin',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/api/mcp') && !req.url?.startsWith('/api/mcp-proxy')) {
+          return next();
+        }
+
+        try {
+          const port = server.config.server.port || 3000;
+          const url = new URL(req.url, `http://localhost:${port}`);
+
+          let body: string | undefined;
+          if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+            const chunks: Buffer[] = [];
+            for await (const chunk of req) {
+              chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+            }
+            body = Buffer.concat(chunks).toString();
+          }
+
+          const headers: Record<string, string> = {};
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (typeof value === 'string') {
+              headers[key] = value;
+            } else if (Array.isArray(value)) {
+              headers[key] = value.join(', ');
+            }
+          }
+
+          // INJECT DEV AUTH FOR LOCAL TESTING
+          headers['x-worldmonitor-key'] = 'local-dev-key';
+          process.env.WORLDMONITOR_VALID_KEYS = 'local-dev-key';
+          process.env.OLLAMA_API_URL = 'http://127.0.0.1:11434';
+          process.env.OLLAMA_MODEL = 'qwen2.5:7b';
+
+          const webRequest = new Request(url.toString(), {
+            method: req.method,
+            headers,
+            body: body || undefined,
+          });
+
+          let response: Response;
+          if (req.url.startsWith('/api/mcp-proxy')) {
+            const handlerMod = await import('./api/mcp-proxy.ts');
+            response = await handlerMod.default(webRequest);
+          } else {
+            const handlerMod = await import('./api/mcp.ts');
+            response = await handlerMod.mcpHandler(webRequest);
+          }
+
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => {
+            res.setHeader(key, value);
+          });
+          res.end(await response.text());
+        } catch (err) {
+          console.error('[mcp-dev-plugin] Error:', err);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+      });
+    },
+  };
+}
+
 function rssProxyPlugin(): Plugin {
   return {
     name: 'rss-proxy',
@@ -906,6 +974,7 @@ export default defineConfig(({ mode }) => {
       // hostname). Desktop and dedicated VITE_VARIANT builds skip it.
       !isDesktopBuild && activeVariant === 'full' && variantDashboardHtmlPlugin(),
       polymarketPlugin(),
+      mcpDevPlugin(),
       rssProxyPlugin(),
       youtubeLivePlugin(),
       gpsjamDevPlugin(),

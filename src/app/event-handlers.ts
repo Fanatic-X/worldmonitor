@@ -513,6 +513,10 @@ export class EventHandlerManager implements AppModule {
   }
 
   private setupEventListeners(): void {
+    document.getElementById('askWorldMonitorBtn')?.addEventListener('click', () => {
+      void import('@/components/AskWorldMonitorModal').then((m) => m.openAskWorldMonitorModal());
+    });
+
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
       if (!shareUrl) return;

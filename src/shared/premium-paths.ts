@@ -59,4 +59,6 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // stayed hidden until PR #3797 fixed the unlock-wipe so users could
   // actually type and click Send.
   '/api/chat-analyst',
+  // Local MCP tools
+  '/api/mcp',
 ]);

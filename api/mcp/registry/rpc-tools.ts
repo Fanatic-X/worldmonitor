@@ -187,6 +187,112 @@ function compactProcurementOpportunity(tender: ProcurementRouteTender) {
 
 export const RPC_TOOLS: ToolDef[] = [
   {
+    name: 'analyze_stock',
+    _outputBudgetBytes: 131072,
+    description: 'Perform a comprehensive stock analysis for a given US-listed ticker symbol (e.g., AAPL). Fetches live market quotes, technical indicators (MACD, RSI), 6-month historical data, dividend profiles, and analyst price targets/consensus from Finnhub and Yahoo Finance. Also includes a synthesized AI overlay with bullish/bearish factors and news summary. Use this to get live quotes, technicals, or deep analysis of a stock.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Stock ticker symbol (e.g. AAPL, MSFT, TSLA).' },
+        includeNews: { type: 'boolean', description: 'Whether to fetch and analyze recent news headlines. Defaults to true.' },
+      },
+      required: ['symbol'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string' },
+        currentPrice: { type: 'number' },
+        changePercent: { type: 'number' },
+        trendStatus: { type: 'string' },
+        macdStatus: { type: 'string' },
+        rsiStatus: { type: 'string' },
+        summary: { type: 'string', description: 'AI generated summary' },
+        action: { type: 'string', description: 'AI suggested action (e.g., Strong buy, Hold)' },
+        technicalSummary: { type: 'string' },
+        bullishFactors: { type: 'array', items: { type: 'string' } },
+        riskFactors: { type: 'array', items: { type: 'string' } },
+        supportLevels: { type: 'array', items: { type: 'number' } },
+        resistanceLevels: { type: 'array', items: { type: 'number' } },
+        headlines: { type: 'array', items: { type: 'object' } },
+        analystConsensus: { type: 'object' },
+        priceTarget: { type: 'object' },
+        recentUpgrades: { type: 'array', items: { type: 'object' } },
+        dividendYield: { type: 'number' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    _execute: async (params, base, context) => {
+      const query = new URLSearchParams();
+      if (params.symbol) query.set('symbol', String(params.symbol).toUpperCase());
+      if (typeof params.includeNews === 'boolean') query.set('includeNews', String(params.includeNews));
+      else query.set('includeNews', 'true');
+      
+      const url = `${base}/api/market/v1/analyze-stock?${query}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(20_000), // AI synthesis can be slow
+      });
+      assertToolFetchOk(res, 'analyze-stock');
+      return res.json();
+    },
+    _apiPaths: [
+      'GET /api/market/v1/analyze-stock',
+    ],
+  },
+  {
+    name: 'get_insider_transactions',
+    _outputBudgetBytes: 65536,
+    description: 'Retrieve the most recent insider trading transactions (officers, directors) for a US-listed company over the last 6 months using Finnhub. Returns total buys, total sells, and the latest transactions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Stock ticker symbol (e.g. AAPL, MSFT).' },
+      },
+      required: ['symbol'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string' },
+        totalBuys: { type: 'number', description: 'Total value of insider purchases in the last 6 months' },
+        totalSells: { type: 'number', description: 'Total value of insider sales in the last 6 months' },
+        netValue: { type: 'number' },
+        transactions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              shares: { type: 'number' },
+              value: { type: 'number' },
+              transactionCode: { type: 'string', description: 'P (Purchase) or S (Sale)' },
+              transactionDate: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context) => {
+      const query = new URLSearchParams();
+      if (params.symbol) query.set('symbol', String(params.symbol).toUpperCase());
+      
+      const url = `${base}/api/market/v1/get-insider-transactions?${query}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      assertToolFetchOk(res, 'get-insider-transactions');
+      return res.json();
+    },
+    _apiPaths: [
+      'GET /api/market/v1/get-insider-transactions',
+    ],
+  },
+  {
     name: 'get_procurement_opportunities',
     _outputBudgetBytes: 65536,
     description: 'Search open global public-procurement opportunities through the canonical Pro route. Default output is 10 compact records (maximum 25), without descriptions or submission/eligibility payloads. automationFit is keyword relevance evidence only, never bidding eligibility; participationMode "unknown" remains unknown.',
@@ -1204,6 +1310,91 @@ export const RPC_TOOLS: ToolDef[] = [
       return { sites, total: sites.length };
     },
     _apiPaths: [],
+  },
+  {
+    name: 'get_fred_series',
+    _outputBudgetBytes: 131072,
+    description: 'Fetch economic time series observations from the Federal Reserve Economic Data (FRED) API. Use this tool automatically when the user asks about US GDP, Inflation, or Interest Rates! Use seriesId "GDP" for US Gross Domestic Product, "CPIAUCSL" for US Consumer Price Index, and "FEDFUNDS" for Federal Funds Rate. Do NOT ask the user for permission, just use the tool with the appropriate seriesId.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seriesId: { type: 'string', description: 'The exact FRED series ID (e.g. GDP, CPIAUCSL, FEDFUNDS).' },
+        limit: { type: 'number', description: 'Maximum number of observations to return (default 100)' },
+      },
+      required: ['seriesId'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        seriesId: { type: 'string' },
+        title: { type: 'string' },
+        units: { type: 'string' },
+        frequency: { type: 'string' },
+        observations: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              date: { type: 'string' },
+              value: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    _execute: async (params: Record<string, unknown>) => {
+      try {
+        const apiKey = process.env.FRED_API_KEY;
+        if (!apiKey) return { _error: 'FRED_API_KEY not configured in environment. Tell the user to configure it.' };
+        const seriesId = String(params.seriesId).toUpperCase();
+        const limit = typeof params.limit === 'number' ? params.limit : 100;
+        
+        const query = new URLSearchParams({
+          series_id: seriesId,
+          api_key: apiKey,
+          file_type: 'json',
+          sort_order: 'desc',
+          limit: String(limit),
+        });
+        const url = `https://api.stlouisfed.org/fred/series/observations?${query}`;
+        
+        const metaQuery = new URLSearchParams({
+          series_id: seriesId,
+          api_key: apiKey,
+          file_type: 'json',
+        });
+        const metaUrl = `https://api.stlouisfed.org/fred/series?${metaQuery}`;
+        
+        const [obsRes, metaRes] = await Promise.all([
+          fetch(url, { headers: { 'User-Agent': 'worldmonitor-mcp/1.0' } }),
+          fetch(metaUrl, { headers: { 'User-Agent': 'worldmonitor-mcp/1.0' } })
+        ]);
+        
+        if (!obsRes.ok) return { _error: `FRED API Error: ${obsRes.status} ${await obsRes.text()}. Please verify that the seriesId is an exact FRED code (e.g. 'GDP', not 'US-GDP').` };
+        
+        const obsData = await obsRes.json();
+        const metaData = metaRes.ok ? await metaRes.json() : null;
+        const meta = metaData?.seriess?.[0] || {};
+        
+        const result = {
+          seriesId,
+          title: meta.title || seriesId,
+          units: meta.units || '',
+          frequency: meta.frequency || '',
+          observations: (obsData.observations || []).map((o: any) => ({
+            date: o.date,
+            value: o.value === '.' ? null : parseFloat(o.value)
+          })),
+        };
+        console.log(`[get_fred_series] Success fetching ${seriesId}. Data length: ${result.observations.length}`);
+        return result;
+      } catch (err) {
+        console.error(`[get_fred_series] ERROR:`, err);
+        throw err;
+      }
+    },
+    _apiPaths: ['GET https://api.stlouisfed.org/fred/series/observations'],
   },
   {
     // describe_tool (v1.5.0) — on-demand escape hatch for the full

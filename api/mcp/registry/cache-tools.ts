@@ -612,7 +612,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_economic_data',
     _outputBudgetBytes: 131072,
-    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, the normalized China macro snapshot plus official NBS/PBoC release calendar, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).',
+    description: 'Macro economic indicators: economic calendar events, the normalized China macro snapshot plus official NBS/PBoC release calendar, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR), and BIS residential + commercial property price indices. CRITICAL: DO NOT use this tool for US GDP, CPI, or Fed Funds rate. You MUST use get_fred_series for those.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -620,7 +620,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'array',
           items: {
             type: 'string',
-            enum: ['fedfunds', 'econ-calendar', 'china-macro', 'china-release-calendar', 'fuel-prices', 'ecb-fx-rates', 'yield-curve-eu', 'spending', 'earnings-calendar', 'cot', 'dsr', 'property-residential', 'property-commercial'],
+            enum: ['econ-calendar', 'china-macro', 'china-release-calendar', 'fuel-prices', 'ecb-fx-rates', 'yield-curve-eu', 'spending', 'earnings-calendar', 'cot', 'dsr', 'property-residential', 'property-commercial'],
           },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full economic bundle.',
         },
